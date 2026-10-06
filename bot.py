@@ -10,8 +10,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --------------------------------------------------------------------------
 # НАСТРОЙКИ
 # --------------------------------------------------------------------------
-API_TOKEN = 'ВАШ_TELEGRAM_BOT_TOKEN'  # Вставьте токен от @BotFather
-ADMIN_ID = 123456789                  # Ваш личный Telegram ID (число)
+API_TOKEN = '8908828254:AAGKtq5RRkeiTsJbF8bfELld-Zgr5UW3lho'  # Вставьте токен от @BotFather
+ADMIN_ID = 1464235091                  # Ваш личный Telegram ID (число)
 
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSce-M6e9yasNlKK_riqGXvKdtYufsX0Po4kQCCuvknEqQlOvw/viewform?usp=header"
 
