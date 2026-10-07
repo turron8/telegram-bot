@@ -1,9 +1,10 @@
 import os
 import asyncio
 import logging
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart, CommandObject
+from aiogram.filters import CommandStart, CommandObject, Command
 from aiogram.utils.deep_linking import create_start_link
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -11,7 +12,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # НАСТРОЙКИ
 # --------------------------------------------------------------------------
 API_TOKEN = '8908828254:AAGKtq5RRkeiTsJbF8bfELld-Zgr5UW3lho'  # Токен от @BotFather
-ADMIN_ID = 1464235091                  # Ваш Telegram ID (число)
+ADMIN_ID = 1464235091                 # Ваш Telegram ID (число)
 
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSce-M6e9yasNlKK_riqGXvKdtYufsX0Po4kQCCuvknEqQlOvw/viewform?usp=header"
 
@@ -22,7 +23,7 @@ MIN_WITHDRAW_STARS = 30  # Минимальный порог вывода (Зв�
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# База данных пользователей
+# База данных пользователей (в памяти)
 db = {}
 
 # --------------------------------------------------------------------------
@@ -77,7 +78,7 @@ TEXTS = {
         "welcome": (
             "Здравствуйте, {name}! 👋\n\n"
             "📌 **Опрос и реферальная программа!**\n"
-            "⚠️️ **ВАЖНО:** Чтобы получить Звёзды, вы и приглашённые друзья ОБЯЗАНЫ указать свой **Telegram @username** в конце Google Формы! Мы вручную проверяем каждый ответ.\n\n"
+            "⚠️ **ВАЖНО:** Чтобы получить Звёзды, вы и приглашённые друзья ОБЯЗАНЫ указать свой **Telegram @username** в конце Google Формы! Мы вручную проверяем каждый ответ.\n\n"
             "🔗 **Ваша реферальная ссылка:**\n"
             "`{ref_link}`\n\n"
             "За каждого друга, прошедшего опрос: **{stars} Stars** 🌟.\n\n"
@@ -92,7 +93,7 @@ TEXTS = {
         "btn_lang": "🌐 Сменить язык",
         "notify_ref": "🎉 **Новый реферал!**\n\nКто-то перешёл по вашей ссылке!\nВыплата подтвердится после проверки заполненной формы.\nНачислено: **+{stars} Stars** 🌟",
         "withdraw_low": "❌ Вывод недоступен! Нужно минимум {min_stars} Stars.",
-        "withdraw_ok": "✅ Заявка отправлена!\nАдминистратор сверит ваши ответы в форме (@username) и отправят Звёзды.",
+        "withdraw_ok": "✅ Заявка отправлена!\nАдминистратор сверит ваши ответы в форме (@username) и отправит Звёзды.",
         "refreshed": "Статистика обновлена!"
     }
 }
@@ -132,8 +133,64 @@ def get_lang_keyboard() -> InlineKeyboardMarkup:
     )
 
 # --------------------------------------------------------------------------
-# ХЭНДЛЕРЫ
+# ХЭНДЛЕРЫ БОТА
 # --------------------------------------------------------------------------
+
+@dp.message(Command("stats"))
+async def admin_stats_handler(message: types.Message):
+    """Панель статистики исключительно для Администратора"""
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    total_users = len(db)
+    total_referrals = sum(u["referrals_count"] for u in db.values())
+    top_users = sorted(db.values(), key=lambda x: x["referrals_count"], reverse=True)[:5]
+
+    top_text = ""
+    for idx, user_info in enumerate(top_users, 1):
+        if user_info['referrals_count'] > 0:
+            top_text += f"{idx}. @{user_info['username']} — {user_info['referrals_count']} реф. ({user_info['stars_balance']} 🌟)\n"
+
+    if not top_text:
+        top_text = "Рефералов пока нет."
+
+    stats_msg = (
+        f"📊 **ОБЩАЯ СТАТИСТИКА БОТА**\n\n"
+        f"👤 Всего пользователей запустили бота: **{total_users}**\n"
+        f"🔗 Всего успешных переходов по реф. ссылкам: **{total_referrals}**\n\n"
+        f"🏆 **Топ-5 лидеров по приглашениям:**\n"
+        f"{top_text}\n\n"
+        f"💡 *Для проверки конкретного ID напишите:* `/check_user ID`"
+    )
+
+    await message.answer(stats_msg, parse_mode="Markdown")
+
+@dp.message(Command("check_user"))
+async def check_user_handler(message: types.Message, command: CommandObject):
+    """Проверка отдельного пользователя по ID"""
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    if not command.args or not command.args.isdigit():
+        await message.answer("⚠️ Укажите ID пользователя. Пример: `/check_user 123456789`", parse_mode="Markdown")
+        return
+
+    target_id = int(command.args)
+    if target_id not in db:
+        await message.answer("❌ Пользователь с таким ID не найден в базе данных бота.")
+        return
+
+    u = db[target_id]
+    info = (
+        f"👤 **Информация о пользователе:**\n\n"
+        f"• ID: `{target_id}`\n"
+        f"• Юзернейм: @{u['username']}\n"
+        f"• Выбранный язык: {str(u['lang']).upper()}\n"
+        f"• Приведено рефералов: **{u['referrals_count']}**\n"
+        f"• Накоплено Звёзд: **{u['stars_balance']}** 🌟\n"
+        f"• Кто пригласил (Referrer ID): `{u['referrer']}`"
+    )
+    await message.answer(info, parse_mode="Markdown")
 
 @dp.message(CommandStart())
 async def start_handler(message: types.Message, command: CommandObject):
@@ -221,19 +278,19 @@ async def withdraw_handler(callback: types.CallbackQuery):
         return
 
     admin_msg = (
-        f"🔔 **НОВАЯ ЗАЯВКА НА ВЫВОД! (ТРЕБУЕТСЯ ПРОВЕРКА ФОРМЫ)**\n\n"
+        f"🔔 **НОВАЯ ЗАЯВКА НА ВЫВОД!**\n\n"
         f"👤 Заявитель: @{user_data['username']} (ID: `{user.id}`)\n"
         f"🌐 Язык: {lang.upper()}\n"
-        f"👥 Приведённых рефералов: {user_data['referrals_count']}\n"
+        f"👥 Приведено рефералов: {user_data['referrals_count']}\n"
         f"🌟 Запрошено Звёзд: {user_data['stars_balance']}\n\n"
-        f"📌 *Инструкция для вас:* Откройте Google Таблицу и проверьте, есть ли за последние дни записи с юзернеймами рефералов от этого пользователя."
+        f"📌 *Сверьте ответы в Google Таблице с этим юзернеймом.*"
     )
     
     try:
         await bot.send_message(chat_id=ADMIN_ID, text=admin_msg, parse_mode="Markdown")
         await callback.answer(t["withdraw_ok"], show_alert=True)
     except Exception:
-        await callback.answer("Error sending request to Admin.", show_alert=True)
+        await callback.answer("Ошибка при отправке админу.", show_alert=True)
 
 @dp.callback_query(F.data == "refresh_stats")
 async def refresh_stats_handler(callback: types.CallbackQuery):
@@ -260,11 +317,29 @@ async def refresh_stats_handler(callback: types.CallbackQuery):
         await callback.answer()
 
 # --------------------------------------------------------------------------
-# ЗАПУСК
+# ВЕБ-СЕРВЕР И АНТИ-СПЯЩИЙ РЕЖИМ (SELF-PING)
 # --------------------------------------------------------------------------
 
 async def handle_ping(request):
-    return web.Response(text="Bot is running!")
+    return web.Response(text="Bot is awake and running!")
+
+async def keep_alive_task():
+    """Фоновая задача, которая пингует веб-сервер каждые 10 минут, чтобы Render не усыплял бота."""
+    await asyncio.sleep(10)
+    service_url = os.environ.get("RENDER_EXTERNAL_URL")
+    
+    if not service_url:
+        print("RENDER_EXTERNAL_URL не найден. Для предотвращения сна настройте UptimeRobot.")
+        return
+
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(service_url) as resp:
+                    print(f"[Keep-Alive] Пинг отправлен. Статус: {resp.status}")
+            except Exception as e:
+                print(f"[Keep-Alive] Ошибка пинга: {e}")
+            await asyncio.sleep(600)  # каждые 10 минут
 
 async def start_web_server():
     app = web.Application()
@@ -278,6 +353,7 @@ async def start_web_server():
 async def main():
     logging.basicConfig(level=logging.INFO)
     await start_web_server()
+    asyncio.create_task(keep_alive_task())
     print("Бот успешно запущен!")
     await dp.start_polling(bot)
 
