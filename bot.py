@@ -11,7 +11,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # --------------------------------------------------------------------------
 # НАСТРОЙКИ
 # --------------------------------------------------------------------------
-API_TOKEN = '8908828254:AAGKtq5RRkeiTsJbF8bfELld-Zgr5UW3lho'  # Токен от @BotFather
+API_TOKEN = '8908828254:AAFFbDHYMvn6ZY8DhHZ99Zluw54waRJFxY8'  # Токен от @BotFather
 ADMIN_ID = 1464235091                 # Ваш Telegram ID (число)
 
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSce-M6e9yasNlKK_riqGXvKdtYufsX0Po4kQCCuvknEqQlOvw/viewform?usp=header"
